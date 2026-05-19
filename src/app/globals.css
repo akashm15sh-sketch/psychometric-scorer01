@@ -234,6 +234,9 @@ p { line-height: 1.6; }
   padding: 32px;
   backdrop-filter: blur(12px);
   transition: var(--transition);
+  overflow: hidden;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .card:hover {
@@ -339,6 +342,9 @@ p { line-height: 1.6; }
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 20px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 640px) {
@@ -373,6 +379,9 @@ p { line-height: 1.6; }
   font-family: inherit;
   transition: var(--transition);
   outline: none;
+  min-width: 0;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .form-input:focus, .form-select:focus {
@@ -399,6 +408,9 @@ p { line-height: 1.6; }
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   margin-top: 16px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .scoring-table {
@@ -665,6 +677,8 @@ p { line-height: 1.6; }
   margin: 0 auto;
   padding: 24px;
   padding-bottom: 80px;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 /* Likert display */
@@ -688,9 +702,12 @@ p { line-height: 1.6; }
 /* Column Mapper */
 .column-mapper {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
   gap: 12px;
   margin-top: 16px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .column-chip {
@@ -704,6 +721,9 @@ p { line-height: 1.6; }
   font-size: 0.82rem;
   cursor: pointer;
   transition: var(--transition);
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .column-chip:hover {
