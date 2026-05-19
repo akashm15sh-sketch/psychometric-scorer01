@@ -1,0 +1,11 @@
+Participant_ID,Q1_Mood,Q2_Sleep,Q3_Energy,Q4_Appetite,Q5_Focus
+P001,Strongly Agree,Agree,Neutral,Disagree,Strongly Disagree
+P002,Agree,Agree,Strongly Agree,Neutral,Agree
+P003,Neutral,Disagree,Agree,Agree,Neutral
+P004,Disagree,Strongly Disagree,Neutral,Strongly Agree,Agree
+P005,Strongly Disagree,Neutral,Disagree,Agree,Strongly Agree
+P006,Agree,Strongly Agree,Agree,Disagree,Neutral
+P007,Neutral,Agree,Strongly Disagree,Neutral,Disagree
+P008,Strongly Agree,Neutral,Strongly Agree,Agree,Agree
+P009,Disagree,Agree,Neutral,Strongly Disagree,Strongly Agree
+P010,Agree,Disagree,Agree,Agree,Neutral
