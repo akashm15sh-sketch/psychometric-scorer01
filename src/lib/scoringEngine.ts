@@ -6,6 +6,8 @@
  * reverse-scoring rules.
  */
 
+import { evaluateFormula, type FormulaContext } from "./formulaEngine";
+
 export interface QuestionConfig {
   /** 1-indexed question number */
   questionNumber: number;
@@ -37,6 +39,18 @@ export interface ScoringConfig {
    * e.g. { "strongly agree": 5, "agree": 4, ... }
    */
   textToNumberMap: Record<string, number>;
+  /**
+   * Optional formula for the overall total score.
+   * Variables: Q1..Qn (per-question scored values), sum, mean, n.
+   * When omitted the default is a plain sum of all question scores.
+   */
+  totalScoreFormula?: string;
+  /**
+   * Optional per-subscale scoring formulas.
+   * Key = subscale name, value = formula string.
+   * Variables: Qn for questions in that subscale, sum, mean, n.
+   */
+  subscaleFormulas?: Record<string, string>;
 }
 
 export interface ScoredParticipant {
@@ -185,6 +199,20 @@ export function scoreParticipants(
       validCount++;
     }
 
+    // Apply total-score formula if configured, otherwise use plain sum.
+    if (config.totalScoreFormula?.trim()) {
+      const ctx: FormulaContext = { sum: totalScore, mean: validCount > 0 ? totalScore / validCount : 0, n: validCount };
+      for (const qConfig of config.questions) {
+        const scored = scoredResponses[qConfig.columnHeader];
+        ctx[`Q${qConfig.questionNumber}`] = scored ?? 0;
+      }
+      try {
+        totalScore = evaluateFormula(config.totalScoreFormula, ctx);
+      } catch {
+        // formula invalid at runtime — fall back to sum
+      }
+    }
+
     const meanScore =
       validCount > 0 ? Math.round((totalScore / validCount) * 1000) / 1000 : 0;
 
@@ -208,9 +236,31 @@ export function scoreParticipants(
         }
       }
 
-      subscaleTotals[name] = subTotal;
-      subscaleMeans[name] =
-        subValid > 0 ? Math.round((subTotal / subValid) * 1000) / 1000 : 0;
+      // Apply subscale formula if configured.
+      const subFormula = config.subscaleFormulas?.[name]?.trim();
+      if (subFormula) {
+        const ctx: FormulaContext = {
+          sum: subTotal,
+          mean: subValid > 0 ? subTotal / subValid : 0,
+          n: subValid,
+        };
+        for (const qNum of qNumbers) {
+          const qConfig = config.questions.find((q) => q.questionNumber === qNum);
+          if (qConfig) ctx[`Q${qNum}`] = scoredResponses[qConfig.columnHeader] ?? 0;
+        }
+        try {
+          const result = evaluateFormula(subFormula, ctx);
+          subscaleTotals[name] = result;
+          subscaleMeans[name] = subValid > 0 ? Math.round((result / subValid) * 1000) / 1000 : 0;
+        } catch {
+          // formula invalid at runtime — fall back to sum
+          subscaleTotals[name] = subTotal;
+          subscaleMeans[name] = subValid > 0 ? Math.round((subTotal / subValid) * 1000) / 1000 : 0;
+        }
+      } else {
+        subscaleTotals[name] = subTotal;
+        subscaleMeans[name] = subValid > 0 ? Math.round((subTotal / subValid) * 1000) / 1000 : 0;
+      }
     }
 
     if (missingCount > config.totalQuestions * 0.5) {

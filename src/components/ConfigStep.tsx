@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import type { ParsedFile } from "@/lib/fileParser";
 import type { ScoringConfig, QuestionConfig } from "@/lib/scoringEngine";
+import { validateFormula } from "@/lib/formulaEngine";
 
 /* ── Common Likert Presets ── */
 const PRESETS: { label: string; map: Record<string, number> }[] = [
@@ -40,6 +41,73 @@ const PRESETS: { label: string; map: Record<string, number> }[] = [
   },
 ];
 
+// ── FormulaInput ─────────────────────────────────────────────────────────────
+
+interface FormulaInputProps {
+  formula: string;
+  onChange: (v: string) => void;
+  availableQs: number[];
+  placeholder?: string;
+  sampleN: number;
+}
+
+function FormulaInput({ formula, onChange, availableQs, placeholder, sampleN }: FormulaInputProps) {
+  const validation = useMemo(() => {
+    if (!formula.trim()) return null;
+    const ctx: Record<string, number> = { sum: sampleN * 3, mean: 3, n: sampleN };
+    availableQs.forEach((q) => { ctx[`Q${q}`] = 3; });
+    return validateFormula(formula, ctx);
+  }, [formula, availableQs, sampleN]);
+
+  const qHint = availableQs.length > 0
+    ? availableQs.slice(0, 6).map((q) => `Q${q}`).join(", ") + (availableQs.length > 6 ? "…" : "")
+    : "Q1, Q2, …";
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          className="form-input"
+          style={{
+            flex: 1,
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            borderColor: validation && !validation.valid ? "var(--error, #f87171)" : undefined,
+          }}
+          placeholder={placeholder ?? "e.g. sum"}
+          value={formula}
+          onChange={(e) => onChange(e.target.value)}
+          spellCheck={false}
+        />
+        {formula.trim() && (
+          <span style={{
+            fontSize: "0.75rem",
+            fontWeight: 600,
+            padding: "4px 10px",
+            borderRadius: 6,
+            background: validation?.valid ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
+            color: validation?.valid ? "var(--success, #10b981)" : "var(--error, #f87171)",
+            whiteSpace: "nowrap",
+          }}>
+            {validation?.valid ? "✓ valid" : "✗ error"}
+          </span>
+        )}
+      </div>
+      {validation && !validation.valid && (
+        <div style={{ fontSize: "0.75rem", color: "var(--error, #f87171)", marginTop: 4 }}>
+          {validation.error}
+        </div>
+      )}
+      <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.5 }}>
+        <strong>Variables:</strong> {qHint}, <code>sum</code>, <code>mean</code>, <code>n</code> &nbsp;|&nbsp;
+        <strong>Functions:</strong> <code>sqrt</code>, <code>log</code>, <code>abs</code>, <code>round</code>, <code>min</code>, <code>max</code>, <code>pow</code>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface Props {
   parsedFile: ParsedFile;
   onConfigDone: (config: ScoringConfig) => void;
@@ -66,12 +134,19 @@ export default function ConfigStep({ parsedFile, onConfigDone, onBack, savedConf
   const [newTextScore, setNewTextScore] = useState<number | "">("");
 
   // Subscales
-  const [subscales, setSubscales] = useState<{ name: string; questions: number[] }[]>(
+  const [subscales, setSubscales] = useState<{ name: string; questions: number[]; formula: string }[]>(
     savedConfig?.subscales
-      ? Object.entries(savedConfig.subscales).map(([name, questions]) => ({ name, questions }))
+      ? Object.entries(savedConfig.subscales).map(([name, questions]) => ({
+          name,
+          questions,
+          formula: savedConfig.subscaleFormulas?.[name] ?? "",
+        }))
       : []
   );
   const [newSubscaleName, setNewSubscaleName] = useState("");
+
+  // Formulas
+  const [totalFormula, setTotalFormula] = useState(savedConfig?.totalScoreFormula ?? "");
 
   const availableColumns = useMemo(
     () => parsedFile.headers.filter((h) => h !== participantIdCol),
@@ -155,8 +230,12 @@ export default function ConfigStep({ parsedFile, onConfigDone, onBack, savedConf
 
   const addSubscale = () => {
     if (!newSubscaleName.trim()) return;
-    setSubscales((prev) => [...prev, { name: newSubscaleName.trim(), questions: [] }]);
+    setSubscales((prev) => [...prev, { name: newSubscaleName.trim(), questions: [], formula: "" }]);
     setNewSubscaleName("");
+  };
+
+  const setSubscaleFormula = (idx: number, formula: string) => {
+    setSubscales((prev) => prev.map((s, i) => i === idx ? { ...s, formula } : s));
   };
 
   const removeSubscale = (idx: number) => {
@@ -184,7 +263,11 @@ export default function ConfigStep({ parsedFile, onConfigDone, onBack, savedConf
     }));
 
     const subscaleMap: Record<string, number[]> = {};
-    for (const s of subscales) subscaleMap[s.name] = s.questions;
+    const subscaleFormulas: Record<string, string> = {};
+    for (const s of subscales) {
+      subscaleMap[s.name] = s.questions;
+      if (s.formula.trim()) subscaleFormulas[s.name] = s.formula.trim();
+    }
 
     const config: ScoringConfig = {
       studyName: studyName.trim(),
@@ -196,6 +279,8 @@ export default function ConfigStep({ parsedFile, onConfigDone, onBack, savedConf
       subscales: subscaleMap,
       participantIdColumn: participantIdCol,
       textToNumberMap: textMap,
+      ...(totalFormula.trim() ? { totalScoreFormula: totalFormula.trim() } : {}),
+      ...(Object.keys(subscaleFormulas).length > 0 ? { subscaleFormulas } : {}),
     };
 
     onConfigDone(config);
@@ -459,6 +544,23 @@ export default function ConfigStep({ parsedFile, onConfigDone, onBack, savedConf
         </div>
       )}
 
+      {/* Total Score Formula */}
+      {selectedColumns.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <h3>∑ Total Score Formula <span style={{ fontWeight: 400, fontSize: "0.8rem", color: "var(--text-muted)" }}>(Optional)</span></h3>
+          <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", margin: "4px 0 10px" }}>
+            Custom formula for the overall score. Leave blank to use the default sum.
+          </p>
+          <FormulaInput
+            formula={totalFormula}
+            onChange={setTotalFormula}
+            availableQs={selectedColumns.map((_, i) => i + 1)}
+            placeholder="e.g. sum  or  Q1*2 + Q2 + Q3  or  (sum / (n * 5)) * 100"
+            sampleN={selectedColumns.length}
+          />
+        </div>
+      )}
+
       {/* Subscales */}
       {selectedColumns.length > 0 && (
         <div className="subscale-section">
@@ -466,7 +568,7 @@ export default function ConfigStep({ parsedFile, onConfigDone, onBack, savedConf
             <h3>📊 Subscales (Optional)</h3>
           </div>
           <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginBottom: 12 }}>
-            Group questions into subscales for separate scoring.
+            Group questions into subscales for separate scoring. Each subscale can have its own formula.
           </p>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -494,6 +596,16 @@ export default function ConfigStep({ parsedFile, onConfigDone, onBack, savedConf
                       Q{qi + 1}
                     </span>
                   ))}
+                </div>
+                {/* Per-subscale formula */}
+                <div style={{ marginTop: 12 }}>
+                  <FormulaInput
+                    formula={sub.formula}
+                    onChange={(f) => setSubscaleFormula(si, f)}
+                    availableQs={sub.questions}
+                    placeholder={`e.g. sum  or  ${sub.questions.slice(0, 3).map(q => `Q${q}`).join(" + ") || "Q1 + Q2"}  or  sum / n`}
+                    sampleN={sub.questions.length}
+                  />
                 </div>
               </div>
             ))}
